@@ -98,7 +98,7 @@ python -m pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-Testcontainers поднимает изолированный PostgreSQL 16. Перед тестами применяется миграция Alembic и проверяется соответствие схемы моделям. Тесты используют `httpx.AsyncClient` и проверяют регистрацию и вход, CRUD, фильтрацию, RBAC, ошибки и формирование письма. GitHub Actions на `push` и `pull_request` запускает тесты, собирает образ, поднимает Compose и проверяет API и получение письма в Mailpit.
+Testcontainers поднимает изолированный PostgreSQL 16. Перед тестами применяется миграция Alembic и проверяется соответствие схемы моделям. Тесты используют `httpx.AsyncClient` и проверяют регистрацию и вход, CRUD, фильтрацию, RBAC, ошибки и формирование письма. Предупреждения pytest считаются ошибками. GitHub Actions на `push` и `pull_request` запускает тесты, собирает образ, поднимает Compose и проверяет API и получение письма в Mailpit.
 
 ## Архитектура
 
