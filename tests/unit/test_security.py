@@ -18,6 +18,8 @@ async def test_bcrypt_hash_verification():
     assert hashed.startswith("$2b$")
     assert await verify_password(password, hashed)
     assert not await verify_password("another-password", hashed)
+    legacy_hash = "$2b$12$paGUEXDCsJhgShuju8tsA.LUC5Q9C2LNFbTPJ/8sUVmWRSSwkZeam"
+    assert await verify_password("legacy-password-123", legacy_hash)
 
 
 def test_token_round_trip_and_expiration():
