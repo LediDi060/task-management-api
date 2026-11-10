@@ -1,0 +1,11 @@
+fastapi==0.141.1
+uvicorn==0.52.1
+pydantic==2.13.4
+pydantic-settings==2.15.0
+SQLAlchemy[asyncio]==2.0.57
+alembic==1.18.4
+asyncpg==0.31.0
+PyJWT==2.13.0
+bcrypt==5.0.0
+email-validator==2.3.0
+typing-extensions>=4.12.2,<5
