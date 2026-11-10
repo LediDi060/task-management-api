@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.api.dependencies import Uow
+from src.api.dependencies import Session
 from src.api.routes import auth, tasks, users
 from src.core.config import Settings
 from src.core.database import create_database
@@ -35,9 +35,9 @@ async def validation_error_handler(_: Request, exc: RequestValidationError) -> J
     return JSONResponse(status_code=422, content={"detail": errors})
 
 
-async def healthcheck(uow: Uow):
+async def healthcheck(session: Session):
     try:
-        await uow.session.execute(text("SELECT 1"))
+        await session.execute(text("SELECT 1"))
     except (SQLAlchemyError, OSError, TimeoutError):
         return JSONResponse(status_code=503, content={"status": "unavailable"})
     return {"status": "ok"}

@@ -29,7 +29,7 @@ async def test_duplicate_email_under_concurrent_registration(async_client):
         async_client.post("/auth/register", json=payload),
         async_client.post("/auth/register", json={**payload, "email": "Duplicate@example.com"}),
     )
-    assert sorted(response.status_code for response in results) == [201, 409]
+    assert sorted(response.status_code for response in results) == [200, 409]
 
 
 async def test_validation_errors_do_not_return_passwords(async_client):
@@ -72,7 +72,7 @@ async def test_task_lifecycle_and_email(async_client, account, smtp_messages):
         headers=headers,
         json={"title": "Написать API", "description": "FastAPI", "deadline": "2026-12-01T00:00:00"},
     )
-    assert response.status_code == 201, response.text
+    assert response.status_code == 200, response.text
     task = response.json()
     path = f"/tasks/{task['id']}"
     assert task["user_id"] == user["id"]
@@ -114,7 +114,7 @@ async def test_task_filters_pagination_and_invalid_fields(async_client, account)
         response = await async_client.post(
             "/tasks", headers=headers, json={"title": title, "status": status, "priority": priority}
         )
-        assert response.status_code == 201
+        assert response.status_code == 200
 
     response = await async_client.get(
         "/tasks",
@@ -191,3 +191,83 @@ async def test_admin_permissions_follow_current_database_role(async_client, acco
 async def test_docs_and_database_health(async_client):
     assert (await async_client.get("/docs")).status_code == 200
     assert (await async_client.get("/healthz")).json() == {"status": "ok"}
+
+
+async def test_oauth2_form_login_and_openapi(async_client, account):
+    user, _ = await account("student@example.com")
+    response = await async_client.post(
+        "/auth/login",
+        data={"username": user["email"], "password": "secure123", "grant_type": "password"},
+    )
+    assert response.status_code == 200
+    headers = {"Authorization": f"Bearer {response.json()['access_token']}"}
+    assert (await async_client.get("/auth/profile", headers=headers)).json()["id"] == user["id"]
+
+    invalid = await async_client.post(
+        "/auth/login",
+        data={"username": user["email"], "password": "secure123", "grant_type": "other"},
+    )
+    assert invalid.status_code == 422
+    malformed = await async_client.post(
+        "/auth/login", content="{", headers={"Content-Type": "application/json"}
+    )
+    assert malformed.status_code == 422
+
+    schema = (await async_client.get("/openapi.json")).json()
+    oauth2 = schema["components"]["securitySchemes"]["OAuth2PasswordBearer"]
+    assert oauth2["flows"]["password"]["tokenUrl"] == "auth/login"
+    bodies = schema["paths"]["/auth/login"]["post"]["requestBody"]["content"]
+    assert set(bodies) == {"application/json", "application/x-www-form-urlencoded"}
+
+
+async def test_previously_issued_id_token_still_authenticates(async_client, account, app):
+    from src.core.security import create_access_token
+
+    user, _ = await account("student@example.com")
+    token = create_access_token({"sub": str(user["id"])}, app.state.settings)
+    response = await async_client.get("/auth/profile", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    assert response.json()["id"] == user["id"]
+
+
+async def test_uow_rolls_back_all_changes_on_error(async_client, account, app):
+    from sqlalchemy import func, select
+
+    from src.models.task import Task
+    from src.models.user import User
+    from src.utils.unit_of_work import UnitOfWork
+
+    user, _ = await account("student@example.com")
+    async with app.state.session_factory() as session:
+        with pytest.raises(RuntimeError):
+            async with UnitOfWork(session) as uow:
+                saved_user = await uow.users.get_by_id(user["id"])
+                await uow.users.update(saved_user, {"name": "Changed"})
+                await uow.tasks.create({"title": "Uncommitted", "user_id": user["id"]})
+                raise RuntimeError("Abort transaction")
+
+    async with app.state.session_factory() as session:
+        assert (await session.get(User, user["id"])).name == user["name"]
+        assert await session.scalar(select(func.count()).select_from(Task)) == 0
+
+
+async def test_failed_commit_does_not_send_email(
+    async_client, account, app, monkeypatch, smtp_messages
+):
+    from sqlalchemy import func, select
+
+    from src.models.task import Task
+    from src.utils.unit_of_work import UnitOfWork
+
+    _, headers = await account("student@example.com")
+
+    async def failed_commit(self):
+        raise RuntimeError("Commit failed")
+
+    monkeypatch.setattr(UnitOfWork, "commit", failed_commit)
+    with pytest.raises(RuntimeError, match="Commit failed"):
+        await async_client.post("/tasks", headers=headers, json={"title": "Uncommitted"})
+
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(Task)) == 0
+    assert smtp_messages == []

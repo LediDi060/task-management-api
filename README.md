@@ -28,7 +28,7 @@ docker compose up -d
 | Метод | Путь | Доступ |
 | --- | --- | --- |
 | POST | `/auth/register` | Публичный. Новая учётная запись получает роль `USER` |
-| POST | `/auth/login` | Публичный. Возвращает `access_token` |
+| POST | `/auth/login` | Публичный. Принимает форму OAuth2 или JSON, возвращает `access_token` |
 | GET | `/auth/profile` | Профиль пользователя, которому выдан токен |
 | GET, POST | `/tasks` | `USER` видит свои задачи, `ADMIN` видит все. Новая задача принадлежит создателю |
 | GET, PUT, DELETE | `/tasks/{task_id}` | Владелец задачи или `ADMIN` |
@@ -53,8 +53,9 @@ API=http://localhost:8000
 curl -fsS "$API/auth/register" -H 'Content-Type: application/json' \
   -d '{"email":"student@example.com","password":"secure123","name":"Иван Иванов"}'
 
-TOKEN="$(curl -fsS "$API/auth/login" -H 'Content-Type: application/json' \
-  -d '{"email":"student@example.com","password":"secure123"}' | jq -er '.access_token')"
+TOKEN="$(curl -fsS "$API/auth/login" \
+  --data-urlencode 'username=student@example.com' \
+  --data-urlencode 'password=secure123' | jq -er '.access_token')"
 AUTH="Authorization: Bearer $TOKEN"
 
 curl -fsS "$API/auth/profile" -H "$AUTH"
@@ -69,9 +70,9 @@ curl -fsS -X PUT "$API/tasks/$TASK_ID" -H "$AUTH" -H 'Content-Type: application/
 curl -fsS -X DELETE "$API/tasks/$TASK_ID" -H "$AUTH"
 ```
 
-В Swagger UI сначала выполните `POST /auth/login`, затем вставьте значение `access_token` в **Authorize**.
+В Swagger UI нажмите **Authorize** и введите email в поле `username` и пароль в поле `password`. Swagger получит JWT через OAuth2 Password Flow. Эндпоинт `POST /auth/login` также принимает JSON с полями `email` и `password`.
 
-- Создание возвращает `201 Created`, удаление — `204 No Content`. Недействительный токен даёт `401`, запрос к админ-эндпоинту с ролью `USER` — `403`. Чужая или отсутствующая задача возвращает `404`. Повторная регистрация того же email возвращает `409`, а некорректные входные данные — `422`.
+- Регистрация и создание задачи возвращают `200 OK`, удаление — `204 No Content`. Недействительный токен даёт `401`, запрос к админ-эндпоинту с ролью `USER` — `403`. Чужая или отсутствующая задача возвращает `404`. Повторная регистрация того же email возвращает `409`, а некорректные входные данные — `422`.
 - Список задач отсортирован по `id` и поддерживает фильтры `status` и `priority`. Значения по умолчанию для пагинации — `offset=0` и `limit=20`. Максимальный `limit` — 100.
 - Статусы задач — `pending`, `in_progress`, `done`. Приоритеты — `low`, `medium`, `high`. По умолчанию новая задача получает `pending` и `medium`.
 - `PUT` меняет переданные поля. `description` и `deadline` можно очистить значением `null`. Дедлайн без часового пояса интерпретируется как UTC.
@@ -101,8 +102,8 @@ Testcontainers поднимает изолированный PostgreSQL 16. Пе
 
 ## Архитектура
 
-- `src/api` содержит маршруты, зависимости FastAPI и схемы Pydantic.
-- `src/services` содержит сценарии регистрации, управления ролями и задачами.
+- `src/api` содержит маршруты, зависимости FastAPI и схемы Pydantic. Зависимости образуют цепочку `get_session → get_uow → get_user_service/get_task_service`. Маршруты вызывают методы сервисов.
+- `src/services` содержит классы `UserService` и `TaskService`. Каждый сервис получает `UnitOfWork` через конструктор. Сценарии выполняются внутри `async with self.uow`.
 - `src/repositories` выполняет запросы к PostgreSQL через асинхронный SQLAlchemy 2.0.
-- `src/utils/unit_of_work.py` объединяет репозитории в одной сессии на запрос. Сервисы явно фиксируют изменения. При закрытии сессии незавершённая транзакция откатывается.
+- `src/utils/unit_of_work.py` получает `AsyncSession` и объединяет репозитории `users` и `tasks`. При успешном выходе из контекста он выполняет `commit`, а при исключении — `rollback`. Сессия закрывается в `finally`. Репозитории выполняют запросы и `flush`, а транзакцией управляет UoW.
 - `src/models` содержит модели ORM, `alembic` — версионируемые миграции.

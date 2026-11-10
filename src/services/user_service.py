@@ -5,33 +5,48 @@ from src.services.errors import Conflict, InvalidCredentials, NotFound
 from src.utils.unit_of_work import UnitOfWork
 
 
-async def register(uow: UnitOfWork, *, email: str, name: str, password: str) -> User:
-    user = await uow.users.add(
-        email=email.lower(), name=name, hashed_password=await hash_password(password)
-    )
-    if user is None:
-        raise Conflict("Email is already registered")
-    await uow.commit()
-    return user
+class UserService:
+    def __init__(self, uow: UnitOfWork):
+        self.uow = uow
 
+    async def register_user(self, email: str, name: str, password: str) -> User:
+        password_hash = await hash_password(password)
+        async with self.uow as uow:
+            user = await uow.users.create(
+                {
+                    "email": email.lower(),
+                    "name": name,
+                    "hashed_password": password_hash,
+                    "role": Role.USER,
+                }
+            )
+            if user is None:
+                raise Conflict("Email is already registered")
+            return user
 
-async def authenticate(uow: UnitOfWork, *, email: str, password: str) -> User:
-    user = await uow.users.by_email(email.lower())
-    password_hash = user.hashed_password if user else DUMMY_PASSWORD_HASH
-    matches = await verify_password(password, password_hash)
-    if not user or not matches:
-        raise InvalidCredentials("Invalid email or password")
-    return user
+    async def authenticate_user(self, email: str, password: str) -> User:
+        async with self.uow as uow:
+            user = await uow.users.get_by_email(email.lower())
+            password_hash = user.hashed_password if user else DUMMY_PASSWORD_HASH
+            matches = await verify_password(password, password_hash)
+            if not user or not matches:
+                raise InvalidCredentials("Invalid email or password")
+            return user
 
+    async def get_user_profile(self, user_id: int) -> User:
+        async with self.uow as uow:
+            user = await uow.users.get_by_id(user_id)
+            if user is None:
+                raise NotFound("User not found")
+            return user
 
-async def list_users(uow: UnitOfWork, *, offset: int, limit: int) -> list[User]:
-    return await uow.users.list(offset, limit)
+    async def get_all_users(self, offset: int, limit: int) -> list[User]:
+        async with self.uow as uow:
+            return await uow.users.get_all(offset, limit)
 
-
-async def change_role(uow: UnitOfWork, user_id: int, role: Role) -> User:
-    user = await uow.users.get(user_id)
-    if user is None:
-        raise NotFound("User not found")
-    user.role = role
-    await uow.commit()
-    return user
+    async def change_user_role(self, user_id: int, role: Role) -> User:
+        async with self.uow as uow:
+            user = await uow.users.get_by_id(user_id)
+            if user is None:
+                raise NotFound("User not found")
+            return await uow.users.update(user, {"role": role})

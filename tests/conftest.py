@@ -76,7 +76,7 @@ def account(async_client, app):
     async def create(email: str, *, admin: bool = False):
         payload = {"email": email, "password": "secure123"}
         response = await async_client.post("/auth/register", json={**payload, "name": "Test User"})
-        assert response.status_code == 201, response.text
+        assert response.status_code == 200, response.text
         user = response.json()
         if admin:
             async with app.state.session_factory.begin() as session:

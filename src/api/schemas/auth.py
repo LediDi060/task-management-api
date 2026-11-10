@@ -1,6 +1,13 @@
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, StringConstraints
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    StringConstraints,
+)
 
 
 def check_bcrypt_length(password: str) -> str:
@@ -19,7 +26,14 @@ class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: EmailStr
-    password: Password
+    password: Password = Field(repr=False, json_schema_extra={"format": "password"})
+
+
+class LoginFormRequest(LoginRequest):
+    model_config = ConfigDict(extra="ignore")
+
+    email: EmailStr = Field(validation_alias="username")
+    grant_type: Literal["password"] | None = None
 
 
 class RegisterRequest(LoginRequest):

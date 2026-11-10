@@ -38,8 +38,9 @@ jobs:
           curl -fsS "$api/docs" > /dev/null
           curl -fsS "$api/auth/register" -H 'Content-Type: application/json' \
             -d '{"email":"ci@example.com","password":"ci-password-123","name":"CI"}'
-          token="$(curl -fsS "$api/auth/login" -H 'Content-Type: application/json' \
-            -d '{"email":"ci@example.com","password":"ci-password-123"}' | jq -er '.access_token')"
+          token="$(curl -fsS "$api/auth/login" \
+            --data-urlencode 'username=ci@example.com' \
+            --data-urlencode 'password=ci-password-123' | jq -er '.access_token')"
           task_id="$(curl -fsS "$api/tasks" -H "Authorization: Bearer $token" \
             -H 'Content-Type: application/json' -d '{"title":"CI smoke test"}' | jq -er '.id')"
           curl -fsS "$api/tasks/$task_id" -H "Authorization: Bearer $token" \
