@@ -19,7 +19,7 @@ docker compose up -d
 | Почтовый ящик Mailpit | [http://localhost:8025](http://localhost:8025) |
 | PostgreSQL | `db:5432` внутри сети Compose |
 
-Контейнер `migrate` применяет миграции Alembic до запуска API. Для остановки используйте `docker compose down`. Данные PostgreSQL хранятся в томе `postgres-data`. После изменений в коде используйте `docker compose up -d --build`.
+При запуске Compose собирает образ приложения. Контейнер `migrate` применяет миграции Alembic до запуска API. Для остановки используйте `docker compose down`. Данные PostgreSQL хранятся в томе `postgres-data`. После изменений в коде используйте `docker compose up -d --build`.
 
 Настройки из [.env.example](.env.example) можно скопировать в `.env`. По умолчанию при старте API создаёт случайный ключ JWT. Чтобы токены оставались действительными после перезапуска, задайте `JWT_SECRET` с помощью `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. Если меняете `POSTGRES_PASSWORD` для новой БД, укажите тот же пароль в `DATABASE_URL`, экранировав специальные символы по правилам URL.
 
@@ -94,11 +94,11 @@ curl -fsS -X PUT "$API/admin/users/$USER_ID/role" \
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements-dev.txt
+python -m pip install -r requirements.txt
 pytest tests/
 ```
 
-Testcontainers поднимает изолированный PostgreSQL 16. Перед тестами применяется миграция Alembic и проверяется соответствие схемы моделям. Тесты используют `httpx.AsyncClient` и проверяют регистрацию и вход, CRUD, фильтрацию, RBAC, ошибки и формирование письма. Предупреждения pytest считаются ошибками. GitHub Actions на `push` и `pull_request` запускает тесты, собирает образ, поднимает Compose и проверяет API и получение письма в Mailpit.
+Testcontainers поднимает изолированный PostgreSQL 16. Перед тестами применяется миграция Alembic и проверяется соответствие схемы моделям. Тесты используют `httpx.AsyncClient` и проверяют регистрацию и вход, CRUD, фильтрацию, RBAC, ошибки и формирование письма. Предупреждения pytest считаются ошибками. GitHub Actions на `push` и `pull_request` устанавливает зависимости из `requirements.txt`, запускает тесты, выполняет `docker-compose up -d` и проверяет API и получение письма в Mailpit.
 
 ## Архитектура
 

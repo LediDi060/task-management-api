@@ -1,6 +1,7 @@
 x-app: &app
   image: task-management-api:local
   build: .
+  pull_policy: build
   environment:
     DATABASE_URL: "${DATABASE_URL:-postgresql+asyncpg://tasks:tasks@db:5432/tasks}"
     JWT_SECRET: "${JWT_SECRET:-}"
